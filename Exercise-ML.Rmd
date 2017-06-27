@@ -1,0 +1,138 @@
+---
+title: "Exercise Analysis and Prediction- Machine Learning, PCA"
+author: "Stephen Hobbs"
+date: "May 2, 2016"
+output: html_document
+---
+#Executive Summary
+
+This analysis predicts if a subject performs an exercise correctly. Specifically, six male subjects were fitted with sensors that collected body movement in an x, y, and z axis, in addition to speed. The subjects performed a simple barbell lift correctly and under the guidance of an instructor, and four times intentionally incorrectly. The experimenters collected the data and assigned the letter "A" to the subject's correct lift and letters, "B", "C", "D", and "E" to the exercise intentionally performed wrong.
+
+To begin, I load the data and the libraries I will use. Then I will tidy the data by removing columns that are missing data or have more than 50% NA. Then I will use correlation and principal component analysis to further reduce the number of variables to increase accuracy; this will be the training data used to create the test model. Then I will run the model on the test data and present results.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+#Import data
+
+I downloaded the data to my computer and imported them into R Studio.
+```{r echo=TRUE}
+#Import training and test data and caret package used later for PCA and prediction.
+set.seed(123)
+library(caret)
+training<- read.csv("/Users/stephenhobbs1/Data science/8-Pract Machine Learn/pml-training.csv", stringsAsFactors=FALSE, na.strings=c("","NA"))
+testing<- read.csv("/Users/stephenhobbs1/Data science/8-Pract Machine Learn/pml-testing.csv", stringsAsFactors=FALSE, na.strings=c("","NA"))
+```
+#Exploratory Analysis
+
+First I look at the training data using str, dim, and head function. For the sake of brevity,I am not including the output of str and head. The dim function return a matrix of 19622 observations and 160 variables.
+
+str(training)
+
+dim(training)
+
+head(training)
+
+#Tidying and preprocessing the data
+
+The training data has an inordinate amount of missing and NA data. I eliminated the columns that had more than 50% of the data missing. This is an effort to reduce the number of variables to something manageable. Later I use the correlation function to find out which variables are correlated. I used PCA to determine which variables to include in the analysis.
+```{r echo=TRUE} 
+#Create tidy data by removing columns missing 50% or more of data.
+index<- apply(training, 2, function(x) {mean(is.na(x))})<0.5 
+# Selects column if columun is True. That is, if less than 50% is missing or NA, then # the program selects it.
+trainData<-training[,index] 
+# Delete first seven columns. They are useless for the analysis.
+trainData<-trainData[,-(1:7)]
+```
+
+Next, I remove correlated columns in an effort to further reduce variables. I removed column 53 because it is the response variable column, A-E. 
+
+Look at correlation of variables, minus class, to remove very correlated columns. The "which" function creates a very long list of marginal value; again, for the sake of brevity, I omit this code output.
+m<-abs(cor(trainData[,-53]))
+diag(m)<-0
+which(m>0.5, arr.ind = TRUE)
+
+#Principal Component Analysis
+
+By removing columns with 50% or more of NA or missing data as well as the correlated columns, I reduced the number of variables from 160 to 53. The 53rd column contains the response variables, A-E, which is removed so it does not interfere with the PCA. PCA further reduces the number of variables to 25 using the preProcessing function.
+```{r echo=TRUE}
+#Suppress Classe column, 53 for the analysis because it is a response variable and affects model.
+preObj<-preProcess(trainData[,-53],method="pca") 
+```
+
+#Training data set
+
+The data are now tidy and the variables are ready for training. I use the training data to create the prediction model.
+
+```{r echo=TRUE}
+#Use predict function to predict the results
+trainPCA<-predict(preObj, trainData[,-53])
+#Use glm function to get the regression model.
+fit0<- glm(I(trainData$classe=="A")~., data=trainPCA, family="binomial")
+#This gives us the fitted model.
+fitted<-predict(fit0,type="response")
+summary(fit0)
+```
+Below I changed the fitted predictor to .6, .7, and .8. The .6 and .8 predictors were not as accurate as .7. 
+```{r echo=TRUE}
+table(trainData$classe=="A", fitted>0.7)
+```
+
+#Testing Data
+
+In this section I tidy the test data. The test data have a lot of columns that we need to exclude, similar to  the training set. So I begin by getting rid of needless columns.
+
+```{r echo=TRUE}
+# Remove columns missing 50% of data.
+index2<- apply(testing, 2, function(x) {mean(is.na(x))})<0.5 
+# Selects column if columun is True. That is, if less than 50% is missing or NA, then then the program selects it.
+testData<-testing[,index2] 
+#Delete unneeded columns 1-7.
+testData<-testData[,-c(1:7)]
+#Use predict function to preprocessed data.
+testPCA<- predict(preObj, newdata=testData)
+```
+
+Below is the code for the predict function for generating models of the remaining columns. 
+```{r echo=TRUE}
+test.fit<-predict(fit0, newdata=testPCA, type ="response")
+```
+Below, the code analyzes the probabilities for crossing the threshold of 70%. Subjects 9 and 14 stand out.
+```{r echo=TRUE}
+#These numbers below are probabilities that the subject performed the exercise correctly.
+test.fit
+test.classe<- rep(0,20)
+```
+
+Below I assign values of Correct or Incorrect if the probability is greater than 70%. The code indicates that two subjects, 9 and 14, probably performed the exercise correctly.
+```{r echo=TRUE}
+test.classe[test.fit>0.7]<-"Correct"
+test.classe[test.fit<=0.7]<-"Incorrect"
+test.classe
+#The code below indicates that subject 9 and 14 performed the exercise correctly.
+#cbind(testing,test.classe) - Combines testing and test.classe; commented for brevity
+
+```
+#Accuracy and Error
+
+Prediction accuracy is .81; error is .19; 0.7 is threshold. The prediction accuracy is (13916+3532)/(13916+126+3532+2048). The error is 1-prediction accuracy, or 1-.81=.19. See the table below.
+```{r echo=TRUE}
+table(trainData$classe=="A", fitted>.7)
+```
+
+#Conclusion
+
+This analysis created a multivariate linear regression using test data and training data to estimate how well a subject performed an exercise . The data suggests that the subjects correctly performed the exercise two times and the other 18 times, they performed the exercise incorrectly.
+
+The analysis scrubbed the training data of missing and NA values. In addition, it used correlation and principle component analysis to find the combination of variables that would be used in the regression model. The model whittled down the number of variables from 160 to 25. The sample out of error is .19.
+
+Acknowledgment
+Data source came from:
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
+Read more: http://groupware.les.inf.puc-rio.br/har#ixzz47LXwVGUQ
+
+
+
+
+`
